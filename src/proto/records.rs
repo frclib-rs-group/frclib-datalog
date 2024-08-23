@@ -11,6 +11,9 @@ use crate::{
     EntryId, EntryMetadata, EntryName, EntryType, EntryTypeMap, FrcTimestamp,
 };
 
+#[allow(clippy::wildcard_imports)]
+use super::entries::*;
+
 const SUPPORTED_TYPES: [&str; 11] = [
     "raw",
     "boolean",
@@ -23,6 +26,20 @@ const SUPPORTED_TYPES: [&str; 11] = [
     "float[]",
     "int64[]",
     "string[]",
+];
+
+const SUPPORTED_TYPES_SERIALS: [u32; 11] = [
+    RAW_TYPE_SERIAL,
+    BOOLEAN_TYPE_SERIAL,
+    INT_TYPE_SERIAL,
+    FLOAT_TYPE_SERIAL,
+    DOUBLE_TYPE_SERIAL,
+    STRING_TYPE_SERIAL,
+    BOOLEAN_ARRAY_TYPE_SERIAL,
+    INT_ARRAY_TYPE_SERIAL,
+    FLOAT_ARRAY_TYPE_SERIAL,
+    DOUBLE_ARRAY_TYPE_SERIAL,
+    STRING_ARRAY_TYPE_SERIAL,
 ];
 
 fn chunk_by_record(bytes: &[u8]) -> Result<Vec<&[u8]>, DataLogError> {
@@ -253,10 +270,10 @@ impl Record {
 
         let is_control = id == 0u32;
 
-        // ALLOC: Clone a string here
-        let mut type_str = type_map.get(&id).unwrap_or(&"raw".to_string()).clone();
-        if !SUPPORTED_TYPES.contains(&type_str.as_str()) && !is_control {
-            type_str = "raw".to_string();
+        let mut type_serial = type_map.get(&id)
+            .map_or(RAW_TYPE_SERIAL, |s| get_str_type_serial(s));
+        if !is_control && !SUPPORTED_TYPES_SERIALS.contains(&type_serial)  {
+            type_serial = RAW_TYPE_SERIAL;
         }
 
         let record_payload = reader.the_rest();
@@ -272,7 +289,7 @@ impl Record {
                     "Unsupported control record",
                 ))
             }
-        } else if let Ok(data_record) = DataRecord::from_binary(record_payload, &type_str) {
+        } else if let Ok(data_record) = DataRecord::from_binary(record_payload, type_serial) {
             Ok(Self::Data(data_record, timestamp, id))
         } else {
             Err(DataLogError::RecordDeserialize(
@@ -437,7 +454,6 @@ impl ControlRecord {
                             "Metadata control record string",
                         ));
                     }
-                    // TODO: elegantly handle error
                     Ok((
                         Self::Metadata(reader.string(metadata_len as usize)?.to_string()),
                         entry_id,
@@ -591,63 +607,65 @@ impl DataRecord {
         }
     }
 
-    pub fn from_binary(bytes: &[u8], type_str: &str) -> Result<Self, DataLogError> {
+    pub fn from_binary(bytes: &[u8], type_serial: u32) -> Result<Self, DataLogError> {
         if bytes.is_empty() {
             return Err(DataLogError::RecordReaderOutOfBounds("Bytes len is 0"));
         }
-        Self::from_binary_inner(bytes, type_str)
+        Self::from_binary_inner(bytes, type_serial)
     }
 
-    fn from_binary_inner(bytes: &[u8], type_str: &str) -> Result<Self, DataLogError> {
+
+    fn from_binary_inner(bytes: &[u8], type_serial: u32) -> Result<Self, DataLogError> {
         let mut reader = RecordByteReader::new(bytes);
-        match type_str {
-            "raw" => Ok(Self::Raw(Box::from(reader.the_rest()))),
-            "boolean" => {
-                Ok(Self::Boolean(reader.bool()?))
-            }
-            "int64" => {
-                Ok(Self::Integer(reader.i64()?))
-            }
-            "float" => {
-                Ok(Self::Float(reader.f32()?))
-            }
-            "double" => {
+        // ordered by most to least used, structs fall under raw
+        match type_serial {
+            DOUBLE_TYPE_SERIAL => {
                 Ok(Self::Double(reader.f64()?))
             }
-            "string" => {
+            STRING_TYPE_SERIAL => {
                 Ok(
                     Self::String(String::from_utf8(Vec::from(reader.the_rest()))?)
                 )
             }
-            "boolean[]" => {
-                let mut bools = Vec::new();
-                while !reader.is_empty() {
-                    bools.push(reader.bool()?);
-                }
-                Ok(Self::BooleanArray(bools.into_boxed_slice()))
+            RAW_TYPE_SERIAL => Ok(Self::Raw(Box::from(reader.the_rest()))),
+            BOOLEAN_TYPE_SERIAL => {
+                Ok(Self::Boolean(reader.bool()?))
             }
-            "int64[]" => {
-                let mut ints = Vec::new();
-                while reader.bytes_left() >= 8 {
-                    ints.push(reader.i64()?);
-                }
-                Ok(Self::IntegerArray(ints.into_boxed_slice()))
-            }
-            "float[]" => {
-                let mut floats = Vec::new();
-                while reader.bytes_left() >= 4 {
-                    floats.push(reader.f32()?);
-                }
-                Ok(Self::FloatArray(floats.into_boxed_slice()))
-            }
-            "double[]" => {
+            DOUBLE_ARRAY_TYPE_SERIAL => {
                 let mut doubles = Vec::new();
                 while reader.bytes_left() >= 8 {
                     doubles.push(reader.f64()?);
                 }
                 Ok(Self::DoubleArray(doubles.into_boxed_slice()))
             }
-            "string[]" => {
+            INT_TYPE_SERIAL => {
+                Ok(Self::Integer(reader.i64()?))
+            }
+            FLOAT_TYPE_SERIAL => {
+                Ok(Self::Float(reader.f32()?))
+            }
+            BOOLEAN_ARRAY_TYPE_SERIAL => {
+                let mut bools = Vec::new();
+                while !reader.is_empty() {
+                    bools.push(reader.bool()?);
+                }
+                Ok(Self::BooleanArray(bools.into_boxed_slice()))
+            }
+            INT_ARRAY_TYPE_SERIAL => {
+                let mut ints = Vec::new();
+                while reader.bytes_left() >= 8 {
+                    ints.push(reader.i64()?);
+                }
+                Ok(Self::IntegerArray(ints.into_boxed_slice()))
+            }
+            FLOAT_ARRAY_TYPE_SERIAL => {
+                let mut floats = Vec::new();
+                while reader.bytes_left() >= 4 {
+                    floats.push(reader.f32()?);
+                }
+                Ok(Self::FloatArray(floats.into_boxed_slice()))
+            }
+            STRING_ARRAY_TYPE_SERIAL => {
                 let mut strings = Vec::new();
                 while reader.bytes_left() >= 4 {
                     let len = u32::try_from(*reader.uint(4)?)?;
@@ -660,7 +678,7 @@ impl DataRecord {
                 }
                 Ok(Self::StringArray(strings.into_iter().map(String::into_boxed_str).collect()))
             }
-            _ => Err(DataLogError::RecordType(type_str.to_string())),
+            _ => Err(DataLogError::RecordType("Unsupported type")),
         }
     }
 }

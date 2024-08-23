@@ -195,7 +195,7 @@ impl DataLogWriter {
         if FrcType::Void == entry_type {
             return Err(
                 DataLogError::RecordType(
-                    "Cannot create a void entry".to_string()
+                    "Cannot create a void entry"
                 )
             )
         }
@@ -247,7 +247,7 @@ impl DataLogWriter {
             get_data_type(&entry_type)
                 .ok_or_else( ||
                     DataLogError::RecordType(
-                        "Cannot create a void entry".to_string()
+                        "Cannot create a void entry"
                     )
                 )?
                 .to_string(),

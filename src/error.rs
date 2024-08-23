@@ -17,7 +17,7 @@ pub enum DataLogError {
     #[error("Record deserialization error: {0:?}")]
     RecordDeserialize(&'static str),
     #[error("Record type error: {0:?}")]
-    RecordType(String),
+    RecordType(&'static str),
     #[error("Record byte reader was short: {0}")]
     RecordReaderOutOfBounds(&'static str),
     #[error("Attempted to modify a read only data log")]

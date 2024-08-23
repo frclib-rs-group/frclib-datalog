@@ -4,7 +4,10 @@ use std::{collections::HashMap, fs::File};
 
 use frclib_core::value::{FrcValue, IntoFrcValue};
 
-use crate::{now, proto::{entries::get_data_type, records::{DataRecord, Record}, util::UInt}, reader::{DataLogReader, DataLogReaderConfig}, writer::DataLogWriter};
+use crate::{now, proto::{entries::{get_data_type, get_str_type_serial, TEST_SERIAL}, records::{DataRecord, Record}, util::UInt}, reader::{DataLogReader, DataLogReaderConfig}, writer::DataLogWriter};
+
+extern crate test;
+use test::Bencher;
 
 fn test_record_type(payload: impl IntoFrcValue) {
     let payload = payload.into_frc_value();
@@ -63,6 +66,17 @@ fn test_read() {
     }
 }
 
+#[bench]
+fn bench_read(b: &mut Bencher) {
+    let buffer = std::io::Cursor::new(std::fs::read("./test_logs/massive.wpilog").expect("Failed to read file"));
+    let exec = || DataLogReader::try_new(
+        buffer.clone(),
+        DataLogReaderConfig::default()
+    ).expect("Failed to create reader");
+
+    b.iter(exec);
+}
+
 #[test]
 fn test_write() {
     let mut writer = DataLogWriter::new(
@@ -74,4 +88,9 @@ fn test_write() {
     writer.write_timestamped(entry, 10, now() - 5).expect("Failed to write entry");
     writer.write_timestamped(entry, 20, now() + 20).expect("Failed to write entry");
     writer.write_timestamped(entry, 30, now() + 50).expect("Failed to write entry");
+}
+
+#[test]
+fn test_type_serial() {
+    assert!(TEST_SERIAL == get_str_type_serial("test"));
 }

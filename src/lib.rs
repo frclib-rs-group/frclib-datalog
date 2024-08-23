@@ -1,4 +1,5 @@
 //! # frclib-datalog
+#![cfg_attr(test, feature(test))]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 #![deny(
     warnings,
