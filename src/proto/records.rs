@@ -660,7 +660,6 @@ impl DataRecord {
                 }
                 Ok(Self::StringArray(strings.into_iter().map(String::into_boxed_str).collect()))
             }
-            // ALLOC: this is a cold path, so it's fine to allocate a new string but it's not ideal
             _ => Err(DataLogError::RecordType(type_str.to_string())),
         }
     }

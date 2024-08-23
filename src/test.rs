@@ -1,4 +1,6 @@
-use std::{path::PathBuf, collections::HashMap};
+
+
+use std::{collections::HashMap, fs::File};
 
 use frclib_core::value::{FrcValue, IntoFrcValue};
 
@@ -51,7 +53,7 @@ fn test_record_types() {
 #[test]
 fn test_read() {
     let reader = DataLogReader::try_new(
-        PathBuf::from("./test_logs/test_read.wpilog"),
+        File::open("./test_logs/test_read.wpilog").expect("Failed to open file"),
         DataLogReaderConfig::default()
     ).expect("Failed to create reader");
 

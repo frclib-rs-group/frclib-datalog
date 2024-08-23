@@ -13,7 +13,7 @@ pub enum DataLogError {
     #[error("DataLog Utf8 error: {0:?}")]
     Utf8(#[from] std::string::FromUtf8Error),
     #[error("Record serialization error: {0:?}")]
-    RecordSerialize(String),
+    RecordSerialize(&'static str),
     #[error("Record deserialization error: {0:?}")]
     RecordDeserialize(&'static str),
     #[error("Record type error: {0:?}")]

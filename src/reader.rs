@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, io::Read, mem::swap, path::PathBuf};
+use std::{collections::HashMap, fmt::Debug, io::Read, mem::swap};
 
 use crate::{proto::{entries::EntryLifeStatus, records::{parse_records, ControlRecord, Record}}, DataLogError, EntryId, EntryTypeMap, TimestampedValue};
 use byteorder::ReadBytesExt;
@@ -52,7 +52,6 @@ impl Debug for EntryFilterReader<'_> {
 /// An all in one reader for a datalog file
 #[derive(Debug)]
 pub struct DataLogReader {
-    path: PathBuf,
     format_version: (u8, u8),
     header_metadata: String,
     config: DataLogReaderConfig,
@@ -65,12 +64,12 @@ impl DataLogReader {
     /// 
     /// # Example
     /// ```rust
-    /// use std::path::PathBuf;
+    /// use std::{path::PathBuf, fs:File};
     /// use frclib_datalog::reader::DataLogReader;
     /// use frclib_core::value::FrcValue;
     /// 
     /// let path = PathBuf::from("path/to/file");
-    /// let reader = DataLogReader::try_new(path, Default::default())
+    /// let reader = DataLogReader::try_new(File::open(path).unwrap(), Default::default())
     ///         .expect("Failed to create reader");
     /// 
     /// reader.read_entry("entry_name").into_iter().for_each(|value| {
@@ -91,17 +90,15 @@ impl DataLogReader {
     /// - [`DataLogError::RecordDeserialize`] if there is an error reading records
     /// - [`DataLogError::RecordType`] if there is an error reading records
     /// - [`DataLogError::RecordReaderOutOfBounds`] if there is an error reading records
-    pub fn try_new(path: PathBuf, config: DataLogReaderConfig) -> Result<Self, DataLogError> {
-        let file = std::fs::File::open(&path)?;
+    pub fn try_new(data: impl Read, config: DataLogReaderConfig) -> Result<Self, DataLogError> {
         let mut reader = Self {
-            path,
             format_version: (0, 0),
             header_metadata: String::new(),
             config,
             keys: HashMap::new(),
             data: HashMap::new()
         };
-        reader.read(file)?;
+        reader.read(data)?;
         reader.sort_data();
         Ok(reader)
     }
@@ -119,7 +116,7 @@ impl DataLogReader {
     }
 
     #[allow(unused_results)]
-    fn read(&mut self, mut file: std::fs::File) -> Result<(), DataLogError> {
+    fn read(&mut self, mut file: impl Read) -> Result<(), DataLogError> {
 
         // Validate Magic
         let mut magic = [0u8; 6];
@@ -204,12 +201,6 @@ impl DataLogReader {
             data.metadata.sort_by_key(|timestamped_value| timestamped_value.timestamp);
             data.type_str.sort_by_key(|timestamped_value| timestamped_value.timestamp);
         }
-    }
-
-    /// Returns the path of the file being read
-    #[must_use]
-    pub const fn get_path(&self) -> &PathBuf {
-        &self.path
     }
 
     /// Returns the format version of the file being read
