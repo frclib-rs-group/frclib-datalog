@@ -84,7 +84,7 @@ fn test_write() {
         "test"
     ).expect("Failed to create writer");
 
-    let entry = writer.get_entry::<i32>(&"test", None).expect("Failed to get entry");
+    let entry = writer.get_entry::<i32>("test", None).expect("Failed to get entry");
     writer.write_timestamped(entry, 10, now() - 5).expect("Failed to write entry");
     writer.write_timestamped(entry, 20, now() + 20).expect("Failed to write entry");
     writer.write_timestamped(entry, 30, now() + 50).expect("Failed to write entry");

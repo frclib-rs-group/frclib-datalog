@@ -50,6 +50,24 @@ impl Debug for EntryFilterReader<'_> {
 }
 
 /// An all in one reader for a datalog file
+/// # Example
+/// ```rust
+/// use std::{path::PathBuf, fs:File};
+/// use frclib_datalog::DataLogReader;
+/// use frclib_core::value::FrcValue;
+/// 
+/// let path = PathBuf::from("path/to/file");
+/// let reader = DataLogReader::try_new(File::open(path).unwrap(), Default::default())
+///         .expect("Failed to create reader");
+/// 
+/// reader.read_entry("entry_name").into_iter().for_each(|value| {
+///     match value.value {
+///         FrcValue::Int(i) => println!("Int: {}", i),
+///         _ => println!("Not an int")
+///     }
+/// });
+/// 
+/// ```
 #[derive(Debug)]
 pub struct DataLogReader {
     format_version: (u8, u8),
@@ -60,26 +78,7 @@ pub struct DataLogReader {
 }
 
 impl DataLogReader {
-    /// Will create a new reader that reads the file at the given path
-    /// 
-    /// # Example
-    /// ```rust
-    /// use std::{path::PathBuf, fs:File};
-    /// use frclib_datalog::reader::DataLogReader;
-    /// use frclib_core::value::FrcValue;
-    /// 
-    /// let path = PathBuf::from("path/to/file");
-    /// let reader = DataLogReader::try_new(File::open(path).unwrap(), Default::default())
-    ///         .expect("Failed to create reader");
-    /// 
-    /// reader.read_entry("entry_name").into_iter().for_each(|value| {
-    ///     match value.value {
-    ///         FrcValue::Int(i) => println!("Int: {}", i),
-    ///         _ => println!("Not an int")
-    ///     }
-    /// });
-    /// 
-    /// ```
+    /// Will create a new reader that reads the buffer
     /// 
     /// # Errors
     /// - [`DataLogError::MagicMismatch`] if the magic bytes at the start of the file do not match `WPILOG` and [`DataLogReaderConfig::require_magic`] is `true`

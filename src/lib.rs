@@ -73,6 +73,9 @@ pub mod writer;
 mod test;
 
 pub use error::DataLogError;
+pub use reader::DataLogReader;
+pub use writer::DataLogWriter;
+
 use frclib_core::value::FrcTimestamp;
 
 ///A unique identifier for a data entry

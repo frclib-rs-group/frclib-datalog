@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write, num::NonZeroU32, sync::atomic::{AtomicU32, Ordering}};
+use std::{collections::HashMap, fs::File, io::Write, num::NonZeroU32, sync::atomic::{AtomicU32, Ordering}};
 
 use byteorder::WriteBytesExt;
 use frclib_core::value::{FrcTimestamp, FrcTimestampedValue, FrcType, FrcValue, IntoFrcValue, StaticallyFrcTyped};
@@ -64,10 +64,26 @@ struct EntryData {
 }
 
 /// A datalog writer
+/// # Example
+/// ```rust
+/// use std::{path::PathBuf, fs:File};
+/// use frclib_datalog::DataLogWriter;
+/// use frclib_core::value::FrcValue;
+/// 
+/// let path = PathBuf::from("path/to/file");
+/// let reader = DataLogWriter::try_new(File::create(path).unwrap(), Default::default())
+///         .expect("Failed to create writer");
+/// 
+/// let entry = writer.get_entry::<i32>("test", None).expect("Failed to get entry");
+/// writer.write_timestamped(entry, 10, now() - 5).expect("Failed to write entry");
+/// writer.write_timestamped(entry, 20, now() + 20).expect("Failed to write entry");
+/// writer.write_timestamped(entry, 30, now() + 50).expect("Failed to write entry");
+/// 
+/// ```
 #[derive(Debug)]
-pub struct DataLogWriter {
+pub struct DataLogWriter<W: Write = File> {
     /// The writer
-    writer: std::io::BufWriter<std::fs::File>,
+    writer: std::io::BufWriter<W>,
     /// The entry type map
     entry_data: Vec<EntryData>,
     /// The map of keys to entry ids
@@ -78,16 +94,16 @@ pub struct DataLogWriter {
     datalog_id: u32
 }
 
-impl DataLogWriter {
+impl <W: Write> DataLogWriter<W> {
     /// Creates a new datalog writer
     /// 
     /// # Errors
     ///  - [`DataLogError::MetadataTooLarge`] if the metadata is too large
     ///  - [`DataLogError::Io`] if an IO error occurs
     #[allow(clippy::needless_pass_by_value)]
-    pub fn new(file: std::fs::File, metadata: impl ToString) -> Result<Self, DataLogError> {
+    pub fn new(buffer: W, metadata: impl ToString) -> Result<Self, DataLogError> {
         let mut w = Self {
-            writer: std::io::BufWriter::new(file),
+            writer: std::io::BufWriter::new(buffer),
             entry_data: Vec::new(),
             entry_id_map: HashMap::new(),
             highest_entry_id: 0,
@@ -104,7 +120,6 @@ impl DataLogWriter {
         } else {
             return Err(DataLogError::MetadataTooLarge);
         }
-
 
         Ok(w)
     }
