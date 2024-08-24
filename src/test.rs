@@ -2,9 +2,9 @@
 
 use std::{collections::HashMap, fs::File};
 
-use frclib_core::value::{FrcValue, IntoFrcValue};
+use frclib_core::value::IntoFrcValue;
 
-use crate::{now, proto::{entries::{get_data_type, get_str_type_serial, TEST_SERIAL}, records::{DataRecord, Record}, util::UInt}, reader::{DataLogReader, DataLogReaderConfig}, writer::DataLogWriter};
+use crate::{now, proto::{entries::{get_data_type_serial, get_str_type_serial, TEST_SERIAL}, records::{DataRecord, Record}, util::UInt}, reader::{DataLogReader, DataLogReaderConfig}, writer::DataLogWriter};
 
 extern crate test;
 use test::Bencher;
@@ -29,14 +29,14 @@ fn test_record_type(payload: impl IntoFrcValue) {
         + timestamp_size as usize
         + payload_package_size as usize);
 
-    let entry_type_map = HashMap::from([(entry_id, get_data_type(&payload.get_type()).expect("Payload type was void").to_string())]);
+    let entry_type_map = HashMap::from([(entry_id, u32::from(get_data_type_serial(&payload.get_type())))]);
     let rerecord = Record::from_binary(&bytes, &entry_type_map).expect("Failed to read record");
     assert_eq!(rerecord.is_data(), record.is_data());
     assert_eq!(rerecord.get_id(), record.get_id());
     assert_eq!(rerecord.get_timestamp(), record.get_timestamp());
     assert_eq!(
-        FrcValue::from(rerecord.as_data().expect("rerecord was not a data record").clone()),
-        FrcValue::from(record.as_data().expect("record was not a data record").clone()));
+        rerecord.as_data().expect("rerecord was not a data record").clone().into_frc_value(),
+        record.as_data().expect("record was not a data record").clone().into_frc_value());
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn test_read() {
 
 #[bench]
 fn bench_read(b: &mut Bencher) {
-    let buffer = std::io::Cursor::new(std::fs::read("./test_logs/massive.wpilog").expect("Failed to read file"));
+    let buffer = std::io::Cursor::new(std::fs::read("./test_logs/test_read.wpilog").expect("Failed to read file"));
     let exec = || DataLogReader::try_new(
         buffer.clone(),
         DataLogReaderConfig::default()

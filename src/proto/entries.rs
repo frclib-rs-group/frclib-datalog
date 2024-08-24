@@ -40,6 +40,35 @@ pub const FLOAT_ARRAY_TYPE_SERIAL: u32 = const_get_data_type_serial!('f', 'l', '
 pub const DOUBLE_ARRAY_TYPE_SERIAL: u32 = const_get_data_type_serial!('d', 'o', 'u', 'b', 'l', 'e', '[', ']');
 pub const STRING_ARRAY_TYPE_SERIAL: u32 = const_get_data_type_serial!('s', 't', 'r', 'i', 'n', 'g', '[', ']');
 
+#[allow(unused)]
+pub const SUPPORTED_TYPES: [&str; 11] = [
+    "raw",
+    "boolean",
+    "double",
+    "float",
+    "int64",
+    "string",
+    "boolean[]",
+    "double[]",
+    "float[]",
+    "int64[]",
+    "string[]",
+];
+
+pub const SUPPORTED_TYPES_SERIALS: [u32; 11] = [
+    RAW_TYPE_SERIAL,
+    BOOLEAN_TYPE_SERIAL,
+    INT_TYPE_SERIAL,
+    FLOAT_TYPE_SERIAL,
+    DOUBLE_TYPE_SERIAL,
+    STRING_TYPE_SERIAL,
+    BOOLEAN_ARRAY_TYPE_SERIAL,
+    INT_ARRAY_TYPE_SERIAL,
+    FLOAT_ARRAY_TYPE_SERIAL,
+    DOUBLE_ARRAY_TYPE_SERIAL,
+    STRING_ARRAY_TYPE_SERIAL,
+];
+
 #[cfg(test)]
 pub const TEST_SERIAL: u32 = const_get_data_type_serial!('t', 'e', 's', 't');
 
@@ -85,7 +114,8 @@ pub fn get_data_type_serial(ty: &FrcType) -> NonZeroU32 {
 }
 
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum EntryLifeStatus {
     Alive{
         start: u64

@@ -1,5 +1,3 @@
-
-use serde::Serialize;
 use thiserror::Error;
 
 /// Errors that can occur when interacting with a `DataLog`
@@ -46,10 +44,4 @@ pub enum DataLogError {
     RecordTooLarge,
     #[error("Metadata too large")]
     MetadataTooLarge,
-}
-
-impl Serialize for DataLogError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(format!("{self}").as_str())
-    }
 }

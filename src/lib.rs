@@ -86,8 +86,6 @@ type EntryName = String;
 type EntryType = String;
 ///A string in json format representing data entry metadata
 type EntryMetadata = String;
-///A hash map of entry id to entry types
-type EntryTypeMap = std::collections::HashMap<EntryId, EntryType>;
 
 
 /// Gets the uptime in microseconds

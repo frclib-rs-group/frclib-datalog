@@ -1,8 +1,9 @@
-use std::{collections::HashMap, fmt::Debug, io::Read, mem::swap};
+use std::{collections::HashMap, fmt::Debug, hash::BuildHasherDefault, io::Read, mem::swap};
 
-use crate::{proto::{entries::EntryLifeStatus, records::{parse_records, ControlRecord, Record}}, DataLogError, EntryId, EntryTypeMap, TimestampedValue};
+use crate::{proto::{entries::{get_str_type_serial, EntryLifeStatus, RAW_TYPE_SERIAL, SUPPORTED_TYPES_SERIALS}, records::{parse_records, ControlRecord, Record}}, DataLogError, EntryId, TimestampedValue};
 use byteorder::ReadBytesExt;
 use frclib_core::{structure::FrcStructureBytes, value::{FrcTimestamp, FrcTimestampedValue, FrcValue, IntoFrcValue}};
+use nohash::NoHashHasher;
 
 #[derive(Debug, Clone)]
 struct EntryData {
@@ -74,7 +75,7 @@ pub struct DataLogReader {
     header_metadata: String,
     config: DataLogReaderConfig,
     keys: HashMap<String, u32>,
-    data: HashMap<u32, EntryData>
+    data: HashMap<u32, EntryData, BuildHasherDefault<NoHashHasher<u32>>>
 }
 
 impl DataLogReader {
@@ -95,27 +96,25 @@ impl DataLogReader {
             header_metadata: String::new(),
             config,
             keys: HashMap::new(),
-            data: HashMap::new()
+            data: HashMap::with_hasher(nohash::BuildNoHashHasher::default())
         };
-        reader.read(data)?;
+        reader.deserialize(data)?;
         reader.sort_data();
         Ok(reader)
     }
 
     #[allow(clippy::map_entry)]
-    fn get_entry_data(&mut self, id: EntryId) -> Result<&mut EntryData, DataLogError> {
-        if !self.data.contains_key(&id) {
-            let _ = self.data.insert(id, EntryData {
+    fn get_entry_data(&mut self, id: EntryId) -> &mut EntryData {
+        self.data.entry(id)
+            .or_insert_with(|| EntryData {
                 values: Vec::new(),
                 metadata: Vec::new(),
                 type_str: Vec::new()
-            });
-        }
-        self.data.get_mut(&id).ok_or(DataLogError::NoSuchEntry)
+            })
     }
 
-    #[allow(unused_results)]
-    fn read(&mut self, mut file: impl Read) -> Result<(), DataLogError> {
+    #[allow(unused_results, clippy::collection_is_never_read)]
+    fn deserialize(&mut self, mut file: impl Read) -> Result<(), DataLogError> {
 
         // Validate Magic
         let mut magic = [0u8; 6];
@@ -144,9 +143,16 @@ impl DataLogReader {
         // Read Records
         let mut file_buffer = Vec::new();
         file.read_to_end(&mut file_buffer)?;
-        let mut entry_types: EntryTypeMap = HashMap::new();
-        let mut entry_status: HashMap<EntryId, EntryLifeStatus> = HashMap::new();
-        let all_records = parse_records(&file_buffer, &mut entry_types)?;
+        // let mut entry_types: HashMap<EntryId, String, BuildHasherDefault<NoHashHasher<EntryId>>> = {
+        //     HashMap::with_capacity_and_hasher(128, nohash::BuildNoHashHasher::default())
+        // };
+        let mut entry_type_serials: HashMap<EntryId, u32, BuildHasherDefault<NoHashHasher<EntryId>>> = {
+            HashMap::with_capacity_and_hasher(128, nohash::BuildNoHashHasher::default())
+        };
+        let mut entry_status: HashMap<EntryId, EntryLifeStatus, BuildHasherDefault<NoHashHasher<EntryId>>> = {
+            HashMap::with_capacity_and_hasher(128, nohash::BuildNoHashHasher::default())
+        };
+        let all_records = parse_records(&file_buffer, &mut entry_type_serials)?;
         for record in all_records {
             match record {
                 Record::Control(inner, timestamp, id) => {
@@ -157,9 +163,14 @@ impl DataLogReader {
                                 continue;
                             }
                             entry_status.insert(id, EntryLifeStatus::Alive { start: timestamp });
-                            entry_types.insert(id, type_str.clone());
+                            let type_serial = get_str_type_serial(&type_str);
+                            if SUPPORTED_TYPES_SERIALS.contains(&type_serial) {
+                                entry_type_serials.insert(id, type_serial);
+                            } else {
+                                entry_type_serials.insert(id, RAW_TYPE_SERIAL);
+                            }
                             self.keys.insert(name, id);
-                            let data = self.get_entry_data(id)?;
+                            let data = self.get_entry_data(id);
                             data.type_str.push(TimestampedValue::new(timestamp, type_str));
                             data.metadata.push(TimestampedValue::new(timestamp, metadata));
                         }
@@ -172,21 +183,21 @@ impl DataLogReader {
                         }
                         ControlRecord::Metadata(metadata) => {
                             if let Some(EntryLifeStatus::Alive { .. }) = entry_status.get(&id) {
-                                self.get_entry_data(id)?.metadata.push(TimestampedValue::new(timestamp, metadata));
+                                self.get_entry_data(id).metadata.push(TimestampedValue::new(timestamp, metadata));
                             }
                         }
                     }
                 },
                 Record::Data(value, timestamp, id) => {
                     if let Some(EntryLifeStatus::Alive { .. }) = entry_status.get(&id) {
-                        let type_str = entry_types.get(&id)
+                        let type_serial = entry_type_serials.get(&id)
                             .ok_or(DataLogError::NoSuchEntry)?;
-                        if value.matches_type(type_str) {
+                        if value.get_type_serial() != *type_serial {
                             continue;
                         }
 
                         let value = FrcTimestampedValue::new(timestamp, value.into_frc_value());
-                        self.get_entry_data(id)?.values.push(value);
+                        self.get_entry_data(id).values.push(value);
                     }
                 }
             }
@@ -194,6 +205,7 @@ impl DataLogReader {
         Ok(())
     }
 
+    #[allow(unused)]
     fn sort_data(&mut self) {
         for data in self.data.values_mut() {
             data.values.sort_by_key(|value| value.timestamp);

@@ -1,46 +1,18 @@
 #![allow(dead_code)]
 
-use std::io::Write;
+use std::{collections::HashMap, hash::BuildHasher, io::Write};
 use byteorder::{LittleEndian, WriteBytesExt};
 
-use frclib_core::value::FrcValue;
+use frclib_core::value::{FrcValue, IntoFrcValue};
 
 use crate::{
     error::DataLogError,
     proto::util::{RecordByteReader, UInt},
-    EntryId, EntryMetadata, EntryName, EntryType, EntryTypeMap, FrcTimestamp,
+    EntryId, EntryMetadata, EntryName, EntryType, FrcTimestamp,
 };
 
 #[allow(clippy::wildcard_imports)]
 use super::entries::*;
-
-const SUPPORTED_TYPES: [&str; 11] = [
-    "raw",
-    "boolean",
-    "double",
-    "float",
-    "int64",
-    "string",
-    "boolean[]",
-    "double[]",
-    "float[]",
-    "int64[]",
-    "string[]",
-];
-
-const SUPPORTED_TYPES_SERIALS: [u32; 11] = [
-    RAW_TYPE_SERIAL,
-    BOOLEAN_TYPE_SERIAL,
-    INT_TYPE_SERIAL,
-    FLOAT_TYPE_SERIAL,
-    DOUBLE_TYPE_SERIAL,
-    STRING_TYPE_SERIAL,
-    BOOLEAN_ARRAY_TYPE_SERIAL,
-    INT_ARRAY_TYPE_SERIAL,
-    FLOAT_ARRAY_TYPE_SERIAL,
-    DOUBLE_ARRAY_TYPE_SERIAL,
-    STRING_ARRAY_TYPE_SERIAL,
-];
 
 fn chunk_by_record(bytes: &[u8]) -> Result<Vec<&[u8]>, DataLogError> {
     let mut chunks = Vec::new();
@@ -76,7 +48,7 @@ fn chunk_by_record(bytes: &[u8]) -> Result<Vec<&[u8]>, DataLogError> {
     Ok(chunks)
 }
 
-pub fn parse_records(bytes: &[u8], type_map: &mut EntryTypeMap) -> Result<Vec<Record>, DataLogError> {
+pub fn parse_records<H: BuildHasher>(bytes: &[u8], type_map: &mut HashMap<u32, u32, H>) -> Result<Vec<Record>, DataLogError> {
     let chunks = chunk_by_record(bytes)?;
     let mut records = Vec::new();
     for chunk in chunks {
@@ -85,7 +57,7 @@ pub fn parse_records(bytes: &[u8], type_map: &mut EntryTypeMap) -> Result<Vec<Re
                 if let Some(entry_type) = control.get_entry_type() {
                     #[allow(unused_results)]
                     {
-                        type_map.insert(record.get_id(), entry_type.clone());
+                        type_map.insert(record.get_id(), get_str_type_serial(entry_type));
                     }
                 }
             }
@@ -240,7 +212,7 @@ impl Record {
         }
     }
 
-    pub fn from_binary(bytes: &[u8], type_map: &EntryTypeMap) -> Result<Self, DataLogError> {
+    pub fn from_binary<H: BuildHasher>(bytes: &[u8], type_map: &HashMap<u32, u32, H>) -> Result<Self, DataLogError> {
         let mut reader = RecordByteReader::new(bytes);
         let bit_field = reader.byte().unwrap_or_default();
 
@@ -270,8 +242,8 @@ impl Record {
 
         let is_control = id == 0u32;
 
-        let mut type_serial = type_map.get(&id)
-            .map_or(RAW_TYPE_SERIAL, |s| get_str_type_serial(s));
+        let mut type_serial = *type_map.get(&id)
+            .unwrap_or(&RAW_TYPE_SERIAL);
         if !is_control && !SUPPORTED_TYPES_SERIALS.contains(&type_serial)  {
             type_serial = RAW_TYPE_SERIAL;
         }
@@ -476,7 +448,7 @@ pub enum DataRecord {
     Integer(i64),
     Float(f32),
     Double(f64),
-    String(String),
+    String(Box<str>),
     BooleanArray(Box<[bool]>),
     IntegerArray(Box<[i64]>),
     FloatArray(Box<[f32]>),
@@ -514,6 +486,22 @@ impl DataRecord {
             Self::FloatArray(_) => e_type == "float[]",
             Self::DoubleArray(_) => e_type == "double[]",
             Self::StringArray(_) => e_type == "string[]",
+        }
+    }
+
+    pub const fn get_type_serial(&self) -> u32 {
+        match self {
+            Self::Raw(_) => RAW_TYPE_SERIAL,
+            Self::Boolean(_) => BOOLEAN_TYPE_SERIAL,
+            Self::Integer(_) => INT_TYPE_SERIAL,
+            Self::Float(_) => FLOAT_TYPE_SERIAL,
+            Self::Double(_) => DOUBLE_TYPE_SERIAL,
+            Self::String(_) => STRING_TYPE_SERIAL,
+            Self::BooleanArray(_) => BOOLEAN_ARRAY_TYPE_SERIAL,
+            Self::IntegerArray(_) => INT_ARRAY_TYPE_SERIAL,
+            Self::FloatArray(_) => FLOAT_ARRAY_TYPE_SERIAL,
+            Self::DoubleArray(_) => DOUBLE_ARRAY_TYPE_SERIAL,
+            Self::StringArray(_) => STRING_ARRAY_TYPE_SERIAL,
         }
     }
 
@@ -624,7 +612,7 @@ impl DataRecord {
             }
             STRING_TYPE_SERIAL => {
                 Ok(
-                    Self::String(String::from_utf8(Vec::from(reader.the_rest()))?)
+                    Self::String(String::from_utf8(Vec::from(reader.the_rest()))?.into_boxed_str())
                 )
             }
             RAW_TYPE_SERIAL => Ok(Self::Raw(Box::from(reader.the_rest()))),
@@ -683,20 +671,21 @@ impl DataRecord {
     }
 }
 
-impl From<DataRecord> for FrcValue {
-    fn from(record: DataRecord) -> Self {
-        match record {
-            DataRecord::Raw(data) => Self::Raw(data),
-            DataRecord::Boolean(data) => Self::Boolean(data),
-            DataRecord::Integer(data) => Self::Int(data),
-            DataRecord::Float(data) => Self::Float(data),
-            DataRecord::Double(data) => Self::Double(data),
-            DataRecord::String(data) => Self::String(data.into_boxed_str()),
-            DataRecord::BooleanArray(data) => Self::BooleanArray(data),
-            DataRecord::IntegerArray(data) => Self::IntArray(data),
-            DataRecord::FloatArray(data) => Self::FloatArray(data),
-            DataRecord::DoubleArray(data) => Self::DoubleArray(data),
-            DataRecord::StringArray(data) => Self::StringArray(data),
+impl IntoFrcValue for DataRecord {
+    #[inline]
+    fn into_frc_value(self) -> FrcValue {
+        match self {
+            Self::Raw(data) => FrcValue::Raw(data),
+            Self::Boolean(data) => FrcValue::Boolean(data),
+            Self::Integer(data) => FrcValue::Int(data),
+            Self::Float(data) => FrcValue::Float(data),
+            Self::Double(data) => FrcValue::Double(data),
+            Self::String(data) => FrcValue::String(data),
+            Self::BooleanArray(data) => FrcValue::BooleanArray(data),
+            Self::IntegerArray(data) => FrcValue::IntArray(data),
+            Self::FloatArray(data) => FrcValue::FloatArray(data),
+            Self::DoubleArray(data) => FrcValue::DoubleArray(data),
+            Self::StringArray(data) => FrcValue::StringArray(data)
         }
     }
 }
@@ -709,7 +698,7 @@ impl From<FrcValue> for DataRecord {
             FrcValue::Int(data) => Self::Integer(data),
             FrcValue::Float(data) => Self::Float(data),
             FrcValue::Double(data) => Self::Double(data),
-            FrcValue::String(data) => Self::String(data.into_string()),
+            FrcValue::String(data) => Self::String(data),
             FrcValue::BooleanArray(data) => Self::BooleanArray(data),
             FrcValue::IntArray(data) => Self::IntegerArray(data),
             FrcValue::FloatArray(data) => Self::FloatArray(data),
